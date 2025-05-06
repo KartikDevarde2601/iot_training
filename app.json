@@ -34,6 +34,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      ["react-native-ble-plx"],
       "expo-localization",
       "expo-font",
       [

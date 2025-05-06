@@ -52,9 +52,9 @@
     "mobx-react-lite": "4.0.5",
     "mobx-state-tree": "5.3.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
     "react-i18next": "^15.0.1",
     "react-native": "0.76.9",
+    "react-native-ble-plx": "^3.2.0",
     "react-native-drawer-layout": "^4.0.1",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-keyboard-controller": "^1.12.7",
@@ -62,7 +62,7 @@
     "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.4.0",
-    "react-native-web": "~0.19.6"
+    "react-native-toast-message": "^2.3.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -96,5 +96,5 @@
   "engines": {
     "node": "^18.18.0 || >=20.0.0"
   },
-  "packageManager": "yarn@3.8.7+sha512.bbe7e310ff7fd20dc63b111110f96fe18192234bb0d4f10441fa6b85d2b644c8923db8fbe6d7886257ace948440ab1f83325ad02af457a1806cdc97f03d2508e"
+  "packageManager": "pnpm@10.8.0+sha512.0e82714d1b5b43c74610193cb20734897c1d00de89d0e18420aebc5977fa13d780a9cb05734624e81ebd81cc876cd464794850641c48b9544326b5622ca29971"
 }
