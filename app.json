@@ -1,0 +1,56 @@
+{
+  "name": "iot_training",
+  "displayName": "iot_training",
+  "expo": {
+    "name": "iot_training",
+    "slug": "iot_training",
+    "scheme": "iot_training",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/app-icon-all.png",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "newArchEnabled": true,
+    "jsEngine": "hermes",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "icon": "./assets/images/app-icon-android-legacy.png",
+      "package": "com.iottraining",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
+        "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
+      },
+      "allowBackup": false
+    },
+    "ios": {
+      "icon": "./assets/images/app-icon-ios.png",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.iottraining"
+    },
+    "web": {
+      "favicon": "./assets/images/app-icon-web-favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-localization",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/app-icon-android-adaptive-foreground.png",
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#191015"
+        }
+      ]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    }
+  },
+  "ignite": {
+    "version": "10.3.0"
+  }
+}
