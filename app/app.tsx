@@ -70,12 +70,21 @@ export function App() {
   const [areFontsLoaded, fontLoadError] = useFonts(customFontsToLoad)
   const [isI18nInitialized, setIsI18nInitialized] = useState(false)
 
+  SplashScreen.preventAutoHideAsync()
+
   useEffect(() => {
     initI18n()
       .then(() => setIsI18nInitialized(true))
       .then(() => loadDateFnsLocale())
-      .then(() => setTimeout(SplashScreen.hideAsync, 500))
   }, [])
+
+  useEffect(() => {
+    if (areFontsLoaded && isI18nInitialized) {
+      setTimeout(SplashScreen.hideAsync, 500)
+    }
+  }, [areFontsLoaded, isI18nInitialized])
+
+  if (!areFontsLoaded || !isI18nInitialized) return null
 
   const linking = {
     prefixes: [prefix],

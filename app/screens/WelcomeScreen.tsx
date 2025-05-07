@@ -1,15 +1,16 @@
 import { observer } from "mobx-react-lite"
-import { FC } from "react"
+import { FC, useCallback, useEffect } from "react"
 import { Image, ImageStyle, TextStyle, View, ViewStyle } from "react-native"
-import { Text, Screen } from "@/components"
+import { Text, Screen, Button } from "@/components"
 import { isRTL } from "@/i18n"
 import { AppStackScreenProps } from "../navigators"
 import { $styles, type ThemedStyle } from "@/theme"
 import { useSafeAreaInsetsStyle } from "../utils/useSafeAreaInsetsStyle"
 import { useAppTheme } from "@/utils/useAppTheme"
-
+import { useNavigation } from "@react-navigation/native"
 const welcomeLogo = require("../../assets/images/logo.png")
 const welcomeFace = require("../../assets/images/welcome-face.png")
+import { BLEService } from "@/services/ble/BLEservice"
 
 interface WelcomeScreenProps extends AppStackScreenProps<"Welcome"> {}
 
@@ -18,6 +19,16 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = observer(function WelcomeSc
 
   const $bottomContainerInsets = useSafeAreaInsetsStyle(["bottom"])
 
+  const navigate = useNavigation<AppStackScreenProps<"Welcome">["navigation"]>()
+
+  const onClick = useCallback(() => {
+    navigate.navigate("DeviceSearch")
+  }, [navigate])
+
+  useEffect(() => {
+    BLEService.requestBluetoothPermission()
+  }, [])
+
   return (
     <Screen preset="fixed" contentContainerStyle={$styles.flex1}>
       <View style={themed($topContainer)}>
@@ -25,7 +36,7 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = observer(function WelcomeSc
         <Text
           testID="welcome-heading"
           style={themed($welcomeHeading)}
-          tx="welcomeScreen:readyForLaunch"
+          text="Smart Healthcare with IoT: Learn, Build, Innovate"
           preset="heading"
         />
         <Text tx="welcomeScreen:exciting" preset="subheading" />
@@ -38,7 +49,11 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = observer(function WelcomeSc
       </View>
 
       <View style={themed([$bottomContainer, $bottomContainerInsets])}>
-        <Text tx="welcomeScreen:postscript" size="md" />
+        <Text
+          text="Empower the next generation of innovators with our training program that bridges IoT and medical technology."
+          size="md"
+        />
+        <Button text="Get Started" onPress={onClick} />
       </View>
     </Screen>
   )

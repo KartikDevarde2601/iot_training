@@ -122,6 +122,9 @@ export const iconRegistry = {
   settings: require("../../assets/icons/settings.png"),
   view: require("../../assets/icons/view.png"),
   x: require("../../assets/icons/x.png"),
+  stop: require("../../assets/icons/stop.png"),
+  scanradar: require("../../assets/icons/scanRadar.png"),
+  bluetooth: require("../../assets/icons/bluetooth.png"),
 }
 
 const $imageStyleBase: ImageStyle = {
