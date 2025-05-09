@@ -68,7 +68,7 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
       loopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(anim, {
-            toValue: 2,
+            toValue: 1.5,
             duration: 2000,
             useNativeDriver: true,
           }),
@@ -287,23 +287,18 @@ const $container: ViewStyle = {
 }
 const $heading: TextStyle = {
   textAlign: "center",
-  marginBottom: spacing.xl,
+  marginBottom: spacing.md,
   color: colors.text,
   fontFamily: typography.primary.bold,
 }
 const $heartRateContainer: ViewStyle = {
   justifyContent: "center",
   alignItems: "center",
-  marginBottom: spacing.lg,
+  marginBottom: spacing.md,
   paddingVertical: spacing.lg,
   paddingHorizontal: spacing.md,
 }
-const $value: TextStyle = {
-  fontSize: 24, // Replace with a valid numeric value or a predefined property from your theme
-  fontFamily: typography.primary.bold,
-  color: colors.tint || colors.palette.primary100,
-  marginLeft: spacing.md,
-}
+
 const $button: ViewStyle = {
   marginVertical: spacing.md,
   backgroundColor: colors.tint || colors.palette.primary100,

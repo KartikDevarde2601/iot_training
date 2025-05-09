@@ -1,6 +1,6 @@
 import { FC, memo, useCallback, useMemo, useRef, useState } from "react"
 import { observer } from "mobx-react-lite"
-import { ViewStyle, View, TextStyle } from "react-native"
+import { ViewStyle, View, TextStyle, Alert } from "react-native"
 import { AppStackScreenProps } from "@/navigators"
 import { Screen, Text, Button, ListView, Icon, ListItem } from "@/components"
 import type { ThemedStyle } from "@/theme"
@@ -53,6 +53,20 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
         }, 5000)
       })
     }
+
+    const showAlertToConnect = useCallback(
+      (device: Device) => {
+        Alert.alert("Connect To Device", `Are you want to Connect ${device.name}`, [
+          {
+            text: "Cancel",
+            onPress: () => console.log("Cancel Pressed"),
+            style: "cancel",
+          },
+          { text: "Connect", onPress: () => ConnectToDevice(device) },
+        ])
+      },
+      [BLEService.device],
+    )
 
     const addFoundDevice = (device: Device) =>
       setFoundDevices((prevState) => {
@@ -120,7 +134,7 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
         <View style={themed($topContainer)}>
           <ListView<DeviceExtendedByUpdateTime>
             data={foundDevices}
-            renderItem={({ item }) => <DeviceItem device={item} onPress={ConnectToDevice} />}
+            renderItem={({ item }) => <DeviceItem device={item} onPress={showAlertToConnect} />}
             estimatedItemSize={89}
           />
         </View>
