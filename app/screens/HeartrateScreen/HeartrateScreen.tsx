@@ -1,4 +1,4 @@
-import { FC, useEffect, useState, useRef } from "react"
+import { FC, useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { observer } from "mobx-react-lite"
 import { ViewStyle, View, TextStyle, Animated, Image, ImageStyle } from "react-native"
 import { $styles, type ThemedStyle } from "@/theme"
@@ -9,7 +9,8 @@ import { BLEService } from "@/services/ble/BLEservice"
 import { atob } from "react-native-quick-base64"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { ServiceInfo, CharacteristicInfo, DescriptorInfo, DescriptorBox } from "./DescriptorBox"
-
+import { GestureHandlerRootView } from "react-native-gesture-handler"
+import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 const HEART_RATE_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
 const HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
 
@@ -22,6 +23,10 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
   const [monitoring, setMonitoring] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const sheetRef = useRef<BottomSheet>(null)
+
+  const snapPoints = useMemo(() => ["25%", "50%", "90%"], [])
 
   const [discoveredServicesData, setDiscoveredServicesData] = useState<ServiceInfo[] | []>([])
 
@@ -119,6 +124,14 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     }
   }
 
+  const isGenericService = (uuid: string) => {
+    const lower = uuid.toLowerCase()
+    return (
+      lower === "00001800-0000-1000-8000-00805f9b34fb" ||
+      lower === "00001801-0000-1000-8000-00805f9b34fb"
+    )
+  }
+
   // Renamed and updated function
   const inspectAllServicesAndCharacteristics = async () => {
     if (!BLEService.device || typeof BLEService.device.services !== "function") {
@@ -139,10 +152,12 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
       }
 
       const services = await BLEService.device.services()
+      const customServices = services.filter((service) => !isGenericService(service.uuid))
+      console.log(customServices)
 
       const servicesInformation: ServiceInfo[] = []
 
-      for (const service of services) {
+      for (const service of customServices) {
         const characteristics = await service.characteristics()
         const characteristicsInformation: CharacteristicInfo[] = []
 
@@ -183,6 +198,7 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
       }
 
       setDiscoveredServicesData(servicesInformation)
+      sheetRef.current?.snapToIndex(1)
       if (servicesInformation.length === 0) {
         setError("No services found on this device after inspection.")
       } else {
@@ -235,46 +251,58 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
   }
 
   return (
-    <Screen preset="scroll" contentContainerStyle={$container} safeAreaEdges={["top", "bottom"]}>
-      <Text preset="heading" text="Heart Rate Monitor" style={$heading} />
-      {error && <Text text={`Error: ${error}`} style={$errorText} />}
-      <View style={$heartRateContainer}>
-        <Animated.View style={{ transform: [{ scale: anim }] }}>
-          <Image style={themed($welcomeLogo)} source={heartLogo} resizeMode="contain" />
-        </Animated.View>
-        <Text text={heartRate !== null ? `${heartRate} BPM` : "--"} preset="heading" />
-      </View>
-      <Button
-        text={monitoring ? "Stop Monitoring" : "Start Monitoring"}
-        onPress={toggleMonitoring}
-        disabled={isProcessing || !BLEService.device}
-        style={$button}
-        pressedStyle={$buttonPressed}
-      />
-      <Button
-        text="Inspect All Services & Chars"
-        onPress={inspectAllServicesAndCharacteristics}
-        disabled={isProcessing || !BLEService.device}
-        style={$button}
-        pressedStyle={$buttonPressed}
-      />
+    <GestureHandlerRootView>
+      <Screen preset="scroll" contentContainerStyle={$container} safeAreaEdges={["top", "bottom"]}>
+        <Text preset="heading" text="Heart Rate Monitor" style={$heading} />
+        {error && <Text text={`Error: ${error}`} style={$errorText} />}
+        <View style={$heartRateContainer}>
+          <Animated.View style={{ transform: [{ scale: anim }] }}>
+            <Image style={themed($welcomeLogo)} source={heartLogo} resizeMode="contain" />
+          </Animated.View>
+          <Text text={heartRate !== null ? `${heartRate} BPM` : "--"} preset="heading" />
+        </View>
+        <Button
+          text={monitoring ? "Stop Monitoring" : "Start Monitoring"}
+          onPress={toggleMonitoring}
+          disabled={isProcessing || !BLEService.device}
+          style={$button}
+          pressedStyle={$buttonPressed}
+        />
+        <Button
+          text="Inspect All Services & Chars"
+          onPress={inspectAllServicesAndCharacteristics}
+          disabled={isProcessing || !BLEService.device}
+          style={$button}
+          pressedStyle={$buttonPressed}
+        />
 
-      <DescriptorBox
-        title="Device Services & Characteristics:"
-        isProcessing={isProcessing}
-        data={
-          discoveredServicesData
-            ? discoveredServicesData.map((service) => ({
-                ...service,
-                characteristics: service.characteristics.map((char) => ({
-                  ...char,
-                  descriptors: char.descriptors.map((desc) => desc.uuid),
-                })),
-              }))
-            : []
-        }
-      />
-    </Screen>
+        <BottomSheet
+          ref={sheetRef}
+          index={-1}
+          snapPoints={snapPoints}
+          enableDynamicSizing={false}
+          enablePanDownToClose={true}
+        >
+          <BottomSheetScrollView contentContainerStyle={themed($containerBottom)}>
+            <DescriptorBox
+              title="Device Services & Characteristics:"
+              isProcessing={isProcessing}
+              data={
+                discoveredServicesData
+                  ? discoveredServicesData.map((service) => ({
+                      ...service,
+                      characteristics: service.characteristics.map((char) => ({
+                        ...char,
+                        descriptors: char.descriptors.map((desc) => desc.uuid),
+                      })),
+                    }))
+                  : []
+              }
+            />
+          </BottomSheetScrollView>
+        </BottomSheet>
+      </Screen>
+    </GestureHandlerRootView>
   )
 })
 
@@ -283,6 +311,12 @@ const $container: ViewStyle = {
   paddingHorizontal: spacing.lg,
   paddingVertical: spacing.lg,
   backgroundColor: colors.background,
+  flex: 1,
+}
+
+const $containerBottom: ViewStyle = {
+  paddingHorizontal: spacing.lg,
+  paddingVertical: spacing.lg,
   flex: 1,
 }
 const $heading: TextStyle = {

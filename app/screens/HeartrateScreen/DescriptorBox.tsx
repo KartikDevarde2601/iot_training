@@ -60,45 +60,45 @@ export const DescriptorBox = ({
 
   return (
     <View style={$outerDescriptorBox}>
-      <Text text="Device Services & Characteristics:" preset="bold" style={$descriptorHeading} />
-      <ScrollView style={$discoveredServicesScrollView} nestedScrollEnabled={true}>
-        {isProcessing && !data && <Text style={$placeholderText}>Inspecting device...</Text>}
-        {!isProcessing && data === null && (
-          <Text style={$placeholderText}>
-            Click 'Inspect All Services & Chars' to view details.
-          </Text>
-        )}
-        {data && data.length === 0 && !isProcessing && (
-          <Text style={$placeholderText}>No services found on the device.</Text>
-        )}
-        {data &&
-          data.length > 0 &&
-          data.map((service, serviceIndex) => (
-            <View key={`service-${service.uuid}-${serviceIndex}`} style={$serviceContainer}>
-              <Text style={$serviceUuidText}>Service: {service.uuid}</Text>
-              {service.characteristics.map((char, charIndex) => (
-                <View key={`char-${char.uuid}-${charIndex}`} style={$characteristicContainer}>
-                  <Text style={$charUuidText}> Characteristic: {char.uuid}</Text>
-                  <Text style={$propertyText}>
-                    {" "}
-                    Properties: {getPropertiesString(char.properties)}
-                  </Text>
-                  {char.descriptors.length > 0 && (
-                    <View>
-                      <Text style={$descriptorListHeader}> Descriptors:</Text>
-                      {char.descriptors.map((desc, descIndex) => (
-                        <Text key={`desc-${desc}-${descIndex}`} style={$descriptorUuidText}>
-                          {" "}
-                          - {desc}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ))}
-      </ScrollView>
+      <Text
+        text="Device Services & Characteristics:"
+        preset="subheading"
+        style={$descriptorHeading}
+      />
+      {isProcessing && !data && <Text style={$placeholderText}>Inspecting device...</Text>}
+      {!isProcessing && data === null && (
+        <Text style={$placeholderText}>Click 'Inspect All Services & Chars' to view details.</Text>
+      )}
+      {data && data.length === 0 && !isProcessing && (
+        <Text style={$placeholderText}>No services found on the device.</Text>
+      )}
+      {data &&
+        data.length > 0 &&
+        data.map((service, serviceIndex) => (
+          <View key={`service-${service.uuid}-${serviceIndex}`} style={$serviceContainer}>
+            <Text style={$serviceUuidText}>Service: {service.uuid}</Text>
+            {service.characteristics.map((char, charIndex) => (
+              <View key={`char-${char.uuid}-${charIndex}`} style={$characteristicContainer}>
+                <Text style={$charUuidText}> Characteristic: {char.uuid}</Text>
+                <Text style={$propertyText}>
+                  {" "}
+                  Properties: {getPropertiesString(char.properties)}
+                </Text>
+                {char.descriptors.length > 0 && (
+                  <View>
+                    <Text style={$descriptorListHeader}> Descriptors:</Text>
+                    {char.descriptors.map((desc, descIndex) => (
+                      <Text key={`desc-${desc}-${descIndex}`} style={$descriptorUuidText}>
+                        {" "}
+                        - {desc}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        ))}
     </View>
   )
 }
@@ -106,14 +106,10 @@ export const DescriptorBox = ({
 // Styles for the dynamic services/characteristics display box
 const $outerDescriptorBox: ViewStyle = {
   flex: 1,
-  marginTop: spacing.xl,
   padding: spacing.md,
   backgroundColor: colors.palette.neutral100,
   borderRadius: spacing.sm,
-  borderWidth: 1,
   borderColor: colors.palette.neutral300,
-  maxHeight: 300, // Set a max height for the scrollable area
-  minHeight: 100, // Set a min height
 }
 const $descriptorHeading: TextStyle = {
   marginBottom: spacing.sm,
