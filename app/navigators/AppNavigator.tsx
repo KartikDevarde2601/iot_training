@@ -30,8 +30,8 @@ export type AppStackParamList = {
   Welcome: undefined
   // 🔥 Your screens go here
   DeviceSearch: undefined
-	Heartrate: undefined
-	// IGNITE_GENERATOR_ANCHOR_APP_STACK_PARAM_LIST
+  Data: undefined
+  // IGNITE_GENERATOR_ANCHOR_APP_STACK_PARAM_LIST
 }
 
 /**
@@ -66,8 +66,8 @@ const AppStack = observer(function AppStack() {
       <Stack.Screen name="Welcome" component={Screens.WelcomeScreen} />
       {/** 🔥 Your screens go here */}
       <Stack.Screen name="DeviceSearch" component={Screens.DeviceSearchScreen} />
-			<Stack.Screen name="Heartrate" component={Screens.HeartrateScreen} />
-			{/* IGNITE_GENERATOR_ANCHOR_APP_STACK_SCREENS */}
+      <Stack.Screen name="Data" component={Screens.DataScreen} />
+      {/* IGNITE_GENERATOR_ANCHOR_APP_STACK_SCREENS */}
     </Stack.Navigator>
   )
 })

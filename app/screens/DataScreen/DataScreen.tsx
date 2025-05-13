@@ -1,38 +1,53 @@
 import { FC, useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { observer } from "mobx-react-lite"
-import { ViewStyle, View, TextStyle, Animated, Image, ImageStyle } from "react-native"
+import { ViewStyle, View, TextStyle, Image, ImageStyle } from "react-native"
 import { $styles, type ThemedStyle } from "@/theme"
 import { AppStackScreenProps } from "@/navigators"
-import { Screen, Text, Button } from "@/components"
+import { Screen, Text, Button, SkiaSlider } from "@/components"
 import { spacing, colors, typography } from "app/theme"
 import { BLEService } from "@/services/ble/BLEservice"
 import { atob } from "react-native-quick-base64"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { ServiceInfo, CharacteristicInfo, DescriptorInfo, DescriptorBox } from "./DescriptorBox"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
+import { TimerProgress } from "./timerProgress"
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
+import { useFont } from "@shopify/react-native-skia"
+import Animated, {
+  useSharedValue,
+  useDerivedValue,
+  withTiming,
+  runOnJS,
+  runOnUI,
+} from "react-native-reanimated"
+
 const HEART_RATE_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
 const HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
 
-const heartLogo = require("../../../assets/images/heart.png")
+interface HeartrateScreenProps extends AppStackScreenProps<"Data"> {}
 
-interface HeartrateScreenProps extends AppStackScreenProps<"Heartrate"> {}
-
-export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function HeartrateScreen() {
-  const [heartRate, setHeartRate] = useState<number | null>(null)
+export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateScreen() {
   const [monitoring, setMonitoring] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Timer related state and values
+  const [totalSeconds, setTotalSeconds] = useState<number>(12) // 12 seconds = 0.2 minutes
+  const percentage = useSharedValue(0)
+  const endAngleProgress = useSharedValue(1)
+  const isRunning = useSharedValue(false)
+  const timeLeft = useSharedValue(totalSeconds)
+
+  const [sliderValue, setSliderValue] = useState(50)
+
+  // Calculate total timer duration in milliseconds
+  const totalTimeMs = totalSeconds * 1000
 
   const sheetRef = useRef<BottomSheet>(null)
 
   const snapPoints = useMemo(() => ["25%", "50%", "90%"], [])
 
   const [discoveredServicesData, setDiscoveredServicesData] = useState<ServiceInfo[] | []>([])
-
-  const anim = useRef(new Animated.Value(1)).current
-  const loopRef = useRef<Animated.CompositeAnimation | null>(null) // Track the loop
-  const [isAnimating, setIsAnimating] = useState(false)
 
   const { themed, theme } = useAppTheme()
 
@@ -68,62 +83,6 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     }
   }, [BLEService.device])
 
-  const startAnimation = () => {
-    if (!isAnimating) {
-      loopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, {
-            toValue: 1.5,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ]),
-      )
-      loopRef.current.start()
-      setIsAnimating(true)
-    }
-  }
-
-  const stopAnimation = () => {
-    if (loopRef.current) {
-      loopRef.current.stop() // Stops the animation
-      loopRef.current = null
-      setIsAnimating(false)
-    }
-  }
-
-  const handleHeartRateData = (base64Value: string) => {
-    try {
-      const rawData = atob(base64Value)
-      const byteArray = new Uint8Array(rawData.length)
-      for (let i = 0; i < rawData.length; i++) {
-        byteArray[i] = rawData.charCodeAt(i) & 0xff
-      }
-      if (byteArray.length === 0) return
-      const flags = byteArray[0]
-      const isUINT16 = (flags & 0x01) !== 0
-      let hrValue: number
-      if (isUINT16) {
-        if (byteArray.length < 3) return
-        const buffer = byteArray.buffer.slice(byteArray.byteOffset + 1, byteArray.byteOffset + 3)
-        const view = new DataView(buffer)
-        hrValue = view.getUint16(0, true)
-      } else {
-        if (byteArray.length < 2) return
-        hrValue = byteArray[1]
-      }
-      setHeartRate(hrValue)
-    } catch (e) {
-      console.error("Failed to parse heart rate data:", e)
-      setError("Error parsing heart rate data.")
-    }
-  }
-
   const isGenericService = (uuid: string) => {
     const lower = uuid.toLowerCase()
     return (
@@ -132,8 +91,32 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     )
   }
 
+  // Function to start the timer
+  const startTimer = useCallback(() => {
+    if (isRunning.value) return // Don't start if already running
+
+    // Run the following logic on the UI thread
+    runOnUI(() => {
+      "worklet" // Mark this anonymous function as a worklet
+      isRunning.value = true
+      percentage.value = 100 // Reset percentage
+      endAngleProgress.value = 1 // Reset progress bar angle
+      timeLeft.value = totalSeconds // Reset time left
+
+      // Animate percentage from 100 to 0 over totalTimeMs
+      percentage.value = withTiming(0, { duration: totalTimeMs })
+      // Animate progress bar angle from 1 to 0
+      endAngleProgress.value = withTiming(0, { duration: totalTimeMs })
+    })() // Immediately invoke the function scheduled by runOnUI
+  }, [isRunning, percentage, endAngleProgress, timeLeft, totalSeconds, totalTimeMs])
+
+  const handleTimerComplete = useCallback(() => {
+    console.log("Timer completed!")
+    // Add any additional logic here
+  }, [])
+
   // Renamed and updated function
-  const inspectAllServicesAndCharacteristics = async () => {
+  const inspectAllServicesAndCharacteristics = useCallback(async () => {
     if (!BLEService.device || typeof BLEService.device.services !== "function") {
       setError("No device connected or device object is not as expected for inspection.")
       return
@@ -211,59 +194,49 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     } finally {
       setIsProcessing(false)
     }
-  }
+  }, [BLEService.device])
 
-  const toggleMonitoring = async () => {
-    if (!BLEService.device) {
-      setError(
-        BLEService.device ? "Device does not support monitoring." : "No BLE device connected.",
-      )
-      setMonitoring(false)
-      return
-    }
-    setIsProcessing(true)
-    setError(null)
-    if (monitoring) {
-      BLEService.finishMonitor()
-      setMonitoring(false)
-      stopAnimation()
-      setHeartRate(null)
-    } else {
-      try {
-        BLEService.setupMonitor(
-          HEART_RATE_SERVICE_UUID,
-          HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID,
-          (characteristic) => {
-            if (characteristic && characteristic.value) handleHeartRateData(characteristic.value)
-          },
-          (error) => {
-            setError(`Failed to start: ${error.message}`)
-          },
-        )
-        startAnimation()
-        setMonitoring(true)
-      } catch (e: any) {
-        setError(`Failed to start: ${e.message}`)
-        setMonitoring(false)
-      }
-    }
-    setIsProcessing(false)
+  // Handle slider value changes
+  const handleSliderChange = (value: number) => {
+    setSliderValue(value)
   }
 
   return (
     <GestureHandlerRootView>
-      <Screen preset="scroll" contentContainerStyle={$container} safeAreaEdges={["top", "bottom"]}>
-        <Text preset="heading" text="Heart Rate Monitor" style={$heading} />
+      <Screen
+        preset="scroll"
+        contentContainerStyle={themed($container)}
+        safeAreaEdges={["top", "bottom"]}
+      >
+        <Text preset="heading" text="IMU Monitor" style={$heading} />
         {error && <Text text={`Error: ${error}`} style={$errorText} />}
-        <View style={$heartRateContainer}>
-          <Animated.View style={{ transform: [{ scale: anim }] }}>
-            <Image style={themed($welcomeLogo)} source={heartLogo} resizeMode="contain" />
-          </Animated.View>
-          <Text text={heartRate !== null ? `${heartRate} BPM` : "--"} preset="heading" />
+        <View style={themed($heartRateContainer)}>
+          <TimerProgress
+            radius={80}
+            progressColor="#FFBB50"
+            percentage={percentage}
+            endAngleProgress={endAngleProgress}
+            isRunning={isRunning}
+            timeLeft={timeLeft}
+            totalSeconds={totalSeconds}
+            onComplete={handleTimerComplete}
+          />
         </View>
+
+        <SkiaSlider
+          initialValue={100}
+          minValue={20}
+          maxValue={300}
+          sliderWidth={350}
+          trackColor="#82cab2"
+          handleColor="#f8f9ff"
+          trackHeight={30}
+          handleSize={25}
+          onValueChange={handleSliderChange}
+        />
         <Button
           text={monitoring ? "Stop Monitoring" : "Start Monitoring"}
-          onPress={toggleMonitoring}
+          onPress={() => console.log("hello")}
           disabled={isProcessing || !BLEService.device}
           style={$button}
           pressedStyle={$buttonPressed}
@@ -350,9 +323,3 @@ const $errorText: TextStyle = {
   backgroundColor: colors.palette.angry100,
   borderRadius: spacing.xs,
 }
-
-const $welcomeLogo: ThemedStyle<ImageStyle> = ({ spacing }) => ({
-  height: 80,
-  width: 80,
-  marginBottom: spacing.xxl,
-})

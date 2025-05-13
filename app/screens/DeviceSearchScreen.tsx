@@ -19,13 +19,12 @@ const MIN_TIME_BEFORE_UPDATE_IN_MILLISECONDS = 5000
 
 export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
   function DeviceSearchScreen() {
-    const [isConnecting, setIsConnecting] = useState(false)
     const [status, setStatus] = useState<string>("")
     const [foundDevices, setFoundDevices] = useState<DeviceExtendedByUpdateTime[]>([])
 
     const animation = useRef<LottieView>(null)
 
-    const navigate = useNavigation<AppStackScreenProps<"Heartrate">["navigation"]>()
+    const navigate = useNavigation<AppStackScreenProps<"Data">["navigation"]>()
 
     const {
       themed,
@@ -98,7 +97,7 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
     }
 
     const onConnectSuccess = () => {
-      navigate.navigate("Heartrate")
+      navigate.navigate("Data")
     }
 
     const onConnectFail = () => {
