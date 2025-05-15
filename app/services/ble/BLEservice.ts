@@ -126,6 +126,7 @@ class BLEServiceInstance {
       this.manager
         .connectToDevice(deviceId)
         .then((device) => {
+          device.requestMTU(251)
           this.device = device
           resolve(device)
         })

@@ -3,7 +3,7 @@ import { observer } from "mobx-react-lite"
 import { ViewStyle, View, TextStyle, Image, ImageStyle } from "react-native"
 import { $styles, type ThemedStyle } from "@/theme"
 import { AppStackScreenProps } from "@/navigators"
-import { Screen, Text, Button, SkiaSlider } from "@/components"
+import { Screen, Text, Button, Switch } from "@/components"
 import { spacing, colors, typography } from "app/theme"
 import { BLEService } from "@/services/ble/BLEservice"
 import { atob } from "react-native-quick-base64"
@@ -12,7 +12,9 @@ import { ServiceInfo, CharacteristicInfo, DescriptorInfo, DescriptorBox } from "
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { TimerProgress } from "./timerProgress"
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
-import { useFont } from "@shopify/react-native-skia"
+import { sensorRepository } from "../../op-sql/sensorRepository"
+import { DatabaseService } from "../../op-sql/databaseRepository"
+import * as FileSystem from "expo-file-system"
 import Animated, {
   useSharedValue,
   useDerivedValue,
@@ -20,9 +22,14 @@ import Animated, {
   runOnJS,
   runOnUI,
 } from "react-native-reanimated"
+import { TABLE } from "@/op-sql/db_table"
 
-const HEART_RATE_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
-const HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
+const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+const CHARACTERISTIC_CFG = "d0a1d466-344c-4be3-ab3f-189f80dd7516"
+const CHARACTERISTIC_CTRL = "e1b2c3d4-e5f6-4765-8734-567890123abc"
+const CHARACTERISTIC_IMU = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+const CHARACTERISTIC_EXG = "cba1d466-344c-4be3-ab3f-189f80dd7516"
+const CHARACTERISTIC_COMPLETED = "1ca3b55b-9700-44fa-afaf-8fd271de74ab"
 
 interface HeartrateScreenProps extends AppStackScreenProps<"Data"> {}
 
@@ -30,15 +37,20 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   const [monitoring, setMonitoring] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [direction, setDirection] = useState<"up" | "down">("up")
+
+  const currentSession = useRef<number | null>(null)
 
   // Timer related state and values
-  const [totalSeconds, setTotalSeconds] = useState<number>(12) // 12 seconds = 0.2 minutes
+  const [totalSeconds, setTotalSeconds] = useState<number>(10)
   const percentage = useSharedValue(0)
   const endAngleProgress = useSharedValue(1)
   const isRunning = useSharedValue(false)
   const timeLeft = useSharedValue(totalSeconds)
 
-  const [sliderValue, setSliderValue] = useState(50)
+  const dbService = useMemo(() => DatabaseService.getInstance(), [])
+
+  const sensorService = useMemo(() => new sensorRepository(), [])
 
   // Calculate total timer duration in milliseconds
   const totalTimeMs = totalSeconds * 1000
@@ -56,11 +68,9 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       if (BLEService.device) {
         setError(null)
         setIsProcessing(true)
-        console.log(
-          `Discovering services for device: ${BLEService.device.id || BLEService.device.name}`,
-        )
         try {
           await BLEService.device.discoverAllServicesAndCharacteristics()
+          await Monitoring()
           console.log("Services and characteristics discovered successfully.")
         } catch (e: any) {
           console.error("Service discovery error:", e)
@@ -77,7 +87,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       discoverDeviceServices()
     }
 
-    // Cleanup function
     return () => {
       BLEService.finishMonitor()
     }
@@ -91,29 +100,258 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     )
   }
 
-  // Function to start the timer
   const startTimer = useCallback(() => {
-    if (isRunning.value) return // Don't start if already running
-
-    // Run the following logic on the UI thread
+    if (isRunning.value) return
     runOnUI(() => {
-      "worklet" // Mark this anonymous function as a worklet
+      "worklet"
       isRunning.value = true
-      percentage.value = 100 // Reset percentage
-      endAngleProgress.value = 1 // Reset progress bar angle
-      timeLeft.value = totalSeconds // Reset time left
+      percentage.value = 100
+      endAngleProgress.value = 1
+      timeLeft.value = totalSeconds
 
-      // Animate percentage from 100 to 0 over totalTimeMs
       percentage.value = withTiming(0, { duration: totalTimeMs })
-      // Animate progress bar angle from 1 to 0
+
       endAngleProgress.value = withTiming(0, { duration: totalTimeMs })
-    })() // Immediately invoke the function scheduled by runOnUI
+    })()
   }, [isRunning, percentage, endAngleProgress, timeLeft, totalSeconds, totalTimeMs])
 
   const handleTimerComplete = useCallback(() => {
-    console.log("Timer completed!")
-    // Add any additional logic here
+    console.log("timer completed ")
   }, [])
+
+  const handleIMU = (base64Value: string) => {
+    const rawdata = atob(base64Value)
+    const dataView = new DataView(
+      new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0))).buffer,
+    )
+
+    if (currentSession.current != null) {
+      const imuData = {
+        timestamp: dataView.getUint32(0, true),
+        accel_x: dataView.getFloat32(4, true),
+        accel_y: dataView.getFloat32(8, true),
+        accel_z: dataView.getFloat32(12, true),
+        gyro_x: dataView.getFloat32(16, true),
+        gyro_y: dataView.getFloat32(20, true),
+        gyro_z: dataView.getFloat32(24, true),
+        session_id: currentSession.current,
+      }
+      sensorService.insertIMU(imuData, TABLE.imu_data)
+    }
+  }
+
+  const handleEXG = (base64Value: string) => {
+    const rawdata = atob(base64Value)
+
+    const dataView = new DataView(
+      new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0))).buffer,
+    )
+
+    if (currentSession.current != null) {
+      const exgdata = {
+        session_id: currentSession.current,
+        timestamp: dataView.getUint32(0, true),
+        value: dataView.getFloat32(4, true),
+      }
+      sensorService.insertEXG(exgdata, TABLE.exg_data)
+    }
+  }
+
+  const generateCSV = async (data: any[]) => {
+    try {
+      // Define CSV headers based on your data structure
+      const headers = [
+        "timestamp",
+        "accel_x",
+        "accel_y",
+        "accel_z",
+        "gyro_x",
+        "gyro_y",
+        "gyro_z",
+        "exg_value",
+      ].join(",")
+
+      // Convert data to CSV rows
+      const csvRows = data.map((row) => {
+        return [
+          row.timestamp,
+          row.accel_x,
+          row.accel_y,
+          row.accel_z,
+          row.gyro_x,
+          row.gyro_y,
+          row.gyro_z,
+          row.exg_value,
+        ].join(",")
+      })
+
+      // Combine headers and rows
+      const csvString = [headers, ...csvRows].join("\n")
+
+      // Generate unique filename with timestamp
+      const fileName = `sensor_data_${Date.now()}.csv`
+      const filePath = `${FileSystem.documentDirectory}${fileName}`
+
+      // Write the CSV file
+      await FileSystem.writeAsStringAsync(filePath, csvString, {
+        encoding: FileSystem.EncodingType.UTF8,
+      })
+
+      console.log(`CSV file created at: ${filePath}`)
+      return filePath
+    } catch (error) {
+      console.error("Error generating CSV:", error)
+      throw error
+    }
+  }
+
+  const handleCompleted = async (base64Value: string) => {
+    const rawdata = atob(base64Value)
+    const configValue = rawdata.charCodeAt(0)
+    if (configValue) {
+      setError("wait csv file is generating")
+
+      try {
+        // Join IMU and EXG data based on timestamp
+        const query = `
+      SELECT 
+        i.timestamp,
+        i.accel_x,
+        i.accel_y,
+        i.accel_z,
+        i.gyro_x,
+        i.gyro_y,
+        i.gyro_z,
+        e.value as exg_value
+      FROM ${TABLE.imu_data} i
+      LEFT JOIN ${TABLE.exg_data} e 
+        ON i.session_id = e.session_id 
+        AND i.timestamp = e.timestamp
+      WHERE i.session_id = ?
+      ORDER BY i.timestamp
+      LIMIT 1000;`
+
+        const result = await dbService.executeQuery(query, [currentSession.current])
+
+        const combinedData = result.rows.length > 0 ? result.rows : []
+
+        if (combinedData.length > 0) {
+          const csvFilePath = await generateCSV(combinedData)
+          setError(`CSV file generated successfully at: ${csvFilePath}`)
+        } else {
+          setError("No data available to generate CSV")
+        }
+      } catch (error) {
+        setError(`Error generating CSV: ${error}`)
+      }
+    }
+  }
+
+  const Monitoring = async () => {
+    if (!BLEService.device) {
+      setError(
+        BLEService.device ? "Device does not support monitoring." : "No BLE device connected.",
+      )
+      setMonitoring(false)
+      return
+    }
+    setIsProcessing(true)
+    setError(null)
+    if (monitoring) {
+      BLEService.finishMonitor()
+      setMonitoring(false)
+    } else {
+      try {
+        BLEService.setupMonitor(
+          SERVICE_UUID,
+          CHARACTERISTIC_IMU,
+          (characteristic) => {
+            if (characteristic && characteristic.value) handleIMU(characteristic.value)
+          },
+          (error) => {
+            setError(`Failed to start: ${error.message}`)
+          },
+        )
+
+        BLEService.setupMonitor(
+          SERVICE_UUID,
+          CHARACTERISTIC_COMPLETED,
+          (characteristic) => {
+            if (characteristic && characteristic.value) handleCompleted(characteristic.value)
+          },
+          (error) => {
+            setError(`Failed to start: ${error.message}`)
+          },
+        )
+
+        BLEService.setupMonitor(
+          SERVICE_UUID,
+          CHARACTERISTIC_EXG,
+          (characteristic) => {
+            if (characteristic && characteristic.value) handleEXG(characteristic.value)
+          },
+          (error) => {
+            setError(`Failed to start: ${error.message}`)
+          },
+        )
+
+        setMonitoring(true)
+      } catch (e: any) {
+        setError(`Failed to start: ${e.message}`)
+        setMonitoring(false)
+      }
+    }
+    setIsProcessing(false)
+  }
+
+  const startAction = async () => {
+    try {
+      const dateunix = Math.floor(new Date().getTime() / 1000)
+      const session = await sensorService.insertSession(
+        { timestamp: dateunix, action: direction },
+        TABLE.session,
+      )
+      if (session.insertId) {
+        currentSession.current = session.insertId
+      } else {
+        setError("error occour when sending to BLE Device")
+      }
+
+      const characteristic = await BLEService.readCharacteristicForDevice(
+        SERVICE_UUID,
+        CHARACTERISTIC_CFG,
+      )
+      if (characteristic?.value) {
+        const binaryStr = atob(characteristic.value)
+        const configValue = binaryStr.charCodeAt(0)
+        if (configValue) {
+          const buffer = new ArrayBuffer(8)
+          const view = new DataView(buffer)
+
+          view.setUint32(0, 25, true)
+          view.setUint32(4, 10, true)
+
+          // Convert to base64 for BLE transmission
+          const bytes = new Uint8Array(buffer)
+          let binary = ""
+          bytes.forEach((byte) => (binary += String.fromCharCode(byte)))
+          const base64 = btoa(binary)
+
+          // Write to BLE device
+          await BLEService.writeCharacteristicWithResponseForDevice(
+            SERVICE_UUID,
+            CHARACTERISTIC_CTRL,
+            base64,
+          ).then(() => {
+            startTimer()
+          })
+        }
+      }
+    } catch (error) {
+      setError(`Error reading characteristic: ${error}`)
+      throw error
+    }
+  }
 
   // Renamed and updated function
   const inspectAllServicesAndCharacteristics = useCallback(async () => {
@@ -196,11 +434,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     }
   }, [BLEService.device])
 
-  // Handle slider value changes
-  const handleSliderChange = (value: number) => {
-    setSliderValue(value)
-  }
-
   return (
     <GestureHandlerRootView>
       <Screen
@@ -208,7 +441,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         contentContainerStyle={themed($container)}
         safeAreaEdges={["top", "bottom"]}
       >
-        <Text preset="heading" text="IMU Monitor" style={$heading} />
+        <Text preset="heading" text="Action Monitoring" style={$heading} />
         {error && <Text text={`Error: ${error}`} style={$errorText} />}
         <View style={themed($heartRateContainer)}>
           <TimerProgress
@@ -222,21 +455,29 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
             onComplete={handleTimerComplete}
           />
         </View>
-
-        <SkiaSlider
-          initialValue={100}
-          minValue={20}
-          maxValue={300}
-          sliderWidth={350}
-          trackColor="#82cab2"
-          handleColor="#f8f9ff"
-          trackHeight={30}
-          handleSize={25}
-          onValueChange={handleSliderChange}
-        />
+        <View>
+          <View style={$switchContainer}>
+            <Text style={$switchLabel} preset="subheading">
+              Action: up
+            </Text>
+            <Switch
+              value={direction === "up"}
+              onValueChange={(value) => setDirection(value ? "up" : "down")}
+            />
+          </View>
+          <View style={$switchContainer}>
+            <Text style={$switchLabel} preset="subheading">
+              Action: down
+            </Text>
+            <Switch
+              value={direction === "down"}
+              onValueChange={(value) => setDirection(value ? "up" : "down")}
+            />
+          </View>
+        </View>
         <Button
-          text={monitoring ? "Stop Monitoring" : "Start Monitoring"}
-          onPress={() => console.log("hello")}
+          text={monitoring ? "Collecting" : "Start Action"}
+          onPress={() => startAction()}
           disabled={isProcessing || !BLEService.device}
           style={$button}
           pressedStyle={$buttonPressed}
@@ -248,7 +489,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
           style={$button}
           pressedStyle={$buttonPressed}
         />
-
         <BottomSheet
           ref={sheetRef}
           index={-1}
@@ -322,4 +562,17 @@ const $errorText: TextStyle = {
   padding: spacing.sm,
   backgroundColor: colors.palette.angry100,
   borderRadius: spacing.xs,
+}
+
+const $switchContainer: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  paddingHorizontal: spacing.md,
+  marginVertical: spacing.sm,
+}
+
+const $switchLabel: TextStyle = {
+  fontFamily: typography.primary.medium,
+  color: colors.text,
 }
