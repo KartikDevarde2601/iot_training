@@ -1,7 +1,6 @@
 import { FC, useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { observer } from "mobx-react-lite"
-import { ViewStyle, View, TextStyle, Image, ImageStyle } from "react-native"
-import { $styles, type ThemedStyle } from "@/theme"
+import { ViewStyle, View, TextStyle } from "react-native"
 import { AppStackScreenProps } from "@/navigators"
 import { Screen, Text, Button, Switch } from "@/components"
 import { spacing, colors, typography } from "app/theme"
@@ -15,14 +14,30 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import { sensorRepository } from "../../op-sql/sensorRepository"
 import { DatabaseService } from "../../op-sql/databaseRepository"
 import * as FileSystem from "expo-file-system"
-import Animated, {
-  useSharedValue,
-  useDerivedValue,
-  withTiming,
-  runOnJS,
-  runOnUI,
-} from "react-native-reanimated"
+import Animated, { useSharedValue, withTiming, runOnUI } from "react-native-reanimated"
 import { TABLE } from "@/op-sql/db_table"
+
+enum StatusType {
+  error,
+  success,
+  info,
+}
+
+interface Status {
+  text: string
+  type: StatusType
+}
+
+interface CSVRow {
+  timestamp: number
+  accel_x: number
+  accel_y: number
+  accel_z: number
+  gyro_x: number
+  gyro_y: number
+  gyro_z: number
+  exg_value: number
+}
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 const CHARACTERISTIC_CFG = "d0a1d466-344c-4be3-ab3f-189f80dd7516"
@@ -36,7 +51,7 @@ interface HeartrateScreenProps extends AppStackScreenProps<"Data"> {}
 export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateScreen() {
   const [monitoring, setMonitoring] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<Status | null>(null)
   const [direction, setDirection] = useState<"up" | "down">("up")
 
   const currentSession = useRef<number | null>(null)
@@ -47,6 +62,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   const endAngleProgress = useSharedValue(1)
   const isRunning = useSharedValue(false)
   const timeLeft = useSharedValue(totalSeconds)
+  const permissionDirectoryUrl = useRef<string | null>(null)
 
   const dbService = useMemo(() => DatabaseService.getInstance(), [])
 
@@ -66,7 +82,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   useEffect(() => {
     const discoverDeviceServices = async () => {
       if (BLEService.device) {
-        setError(null)
+        setStatus(null)
         setIsProcessing(true)
         try {
           await BLEService.device.discoverAllServicesAndCharacteristics()
@@ -74,12 +90,18 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
           console.log("Services and characteristics discovered successfully.")
         } catch (e: any) {
           console.error("Service discovery error:", e)
-          setError(`Discovery Error: ${e.message || "Unknown error during discovery"}`)
+          showStatus({
+            text: `Discovery Error: ${e.message || "Unknown error during discovery"}`,
+            type: StatusType.error,
+          })
         } finally {
           setIsProcessing(false)
         }
       } else {
-        setError("Something went wrong")
+        showStatus({
+          text: "Something went wrong restart the app",
+          type: StatusType.error,
+        })
       }
     }
 
@@ -98,6 +120,10 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       lower === "00001800-0000-1000-8000-00805f9b34fb" ||
       lower === "00001801-0000-1000-8000-00805f9b34fb"
     )
+  }
+
+  const showStatus = (status: Status) => {
+    setStatus(status)
   }
 
   const startTimer = useCallback(() => {
@@ -157,9 +183,8 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     }
   }
 
-  const generateCSV = async (data: any[]) => {
+  const generateCSV = async (data: CSVRow[]) => {
     try {
-      // Define CSV headers based on your data structure
       const headers = [
         "timestamp",
         "accel_x",
@@ -171,7 +196,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         "exg_value",
       ].join(",")
 
-      // Convert data to CSV rows
       const csvRows = data.map((row) => {
         return [
           row.timestamp,
@@ -185,23 +209,44 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         ].join(",")
       })
 
-      // Combine headers and rows
       const csvString = [headers, ...csvRows].join("\n")
+      const fileName = `${direction}_${currentSession.current}.csv`
 
-      // Generate unique filename with timestamp
-      const fileName = `sensor_data_${Date.now()}.csv`
-      const filePath = `${FileSystem.documentDirectory}${fileName}`
+      // Request permission if we don't have it yet
+      if (permissionDirectoryUrl.current == null) {
+        const permissionResult =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync()
+        if (!permissionResult.granted) {
+          showStatus({
+            text: "Permission to access external storage was denied",
+            type: StatusType.error,
+          })
+          return
+        }
+        permissionDirectoryUrl.current = permissionResult.directoryUri
+      }
 
-      // Write the CSV file
-      await FileSystem.writeAsStringAsync(filePath, csvString, {
+      // Create the file in the SAF directory
+      const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        permissionDirectoryUrl.current!,
+        fileName,
+        "text/csv",
+      )
+
+      // Write the CSV string to the file
+      await FileSystem.writeAsStringAsync(fileUri, csvString, {
         encoding: FileSystem.EncodingType.UTF8,
       })
-
-      console.log(`CSV file created at: ${filePath}`)
-      return filePath
+      showStatus({
+        text: "CSV file saved to external storage successfully",
+        type: StatusType.success,
+      })
     } catch (error) {
       console.error("Error generating CSV:", error)
-      throw error
+      showStatus({
+        text: `Error generating CSV: ${error}`,
+        type: StatusType.error,
+      })
     }
   }
 
@@ -209,8 +254,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     const rawdata = atob(base64Value)
     const configValue = rawdata.charCodeAt(0)
     if (configValue) {
-      setError("wait csv file is generating")
-
+      showStatus({ text: "wait csv file is generating", type: StatusType.info })
       try {
         // Join IMU and EXG data based on timestamp
         const query = `
@@ -235,28 +279,42 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
 
         const combinedData = result.rows.length > 0 ? result.rows : []
 
-        if (combinedData.length > 0) {
-          const csvFilePath = await generateCSV(combinedData)
-          setError(`CSV file generated successfully at: ${csvFilePath}`)
+        const csvRows: CSVRow[] = combinedData.map((row: any) => ({
+          timestamp: Number(row.timestamp),
+          accel_x: Number(row.accel_x),
+          accel_y: Number(row.accel_y),
+          accel_z: Number(row.accel_z),
+          gyro_x: Number(row.gyro_x),
+          gyro_y: Number(row.gyro_y),
+          gyro_z: Number(row.gyro_z),
+          exg_value: Number(row.exg_value),
+        }))
+
+        if (csvRows.length > 0) {
+          await generateCSV(csvRows)
         } else {
-          setError("No data available to generate CSV")
+          showStatus({ text: "No data available to generate CSV", type: StatusType.info })
         }
       } catch (error) {
-        setError(`Error generating CSV: ${error}`)
+        showStatus({ text: `Error generating CSV: ${error}`, type: StatusType.error })
       }
     }
   }
 
   const Monitoring = async () => {
     if (!BLEService.device) {
-      setError(
-        BLEService.device ? "Device does not support monitoring." : "No BLE device connected.",
-      )
+      showStatus({
+        text: BLEService.device
+          ? "Device does not support monitoring."
+          : "No BLE device connected.",
+        type: StatusType.error,
+      })
+
       setMonitoring(false)
       return
     }
     setIsProcessing(true)
-    setError(null)
+    setStatus(null)
     if (monitoring) {
       BLEService.finishMonitor()
       setMonitoring(false)
@@ -269,7 +327,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
             if (characteristic && characteristic.value) handleIMU(characteristic.value)
           },
           (error) => {
-            setError(`Failed to start: ${error.message}`)
+            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
           },
         )
 
@@ -280,7 +338,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
             if (characteristic && characteristic.value) handleCompleted(characteristic.value)
           },
           (error) => {
-            setError(`Failed to start: ${error.message}`)
+            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
           },
         )
 
@@ -291,13 +349,13 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
             if (characteristic && characteristic.value) handleEXG(characteristic.value)
           },
           (error) => {
-            setError(`Failed to start: ${error.message}`)
+            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
           },
         )
 
         setMonitoring(true)
-      } catch (e: any) {
-        setError(`Failed to start: ${e.message}`)
+      } catch (error: any) {
+        showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
         setMonitoring(false)
       }
     }
@@ -314,7 +372,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       if (session.insertId) {
         currentSession.current = session.insertId
       } else {
-        setError("error occour when sending to BLE Device")
+        showStatus({ text: "error occour when sending to BLE Device", type: StatusType.error })
       }
 
       const characteristic = await BLEService.readCharacteristicForDevice(
@@ -348,7 +406,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         }
       }
     } catch (error) {
-      setError(`Error reading characteristic: ${error}`)
       throw error
     }
   }
@@ -356,11 +413,14 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   // Renamed and updated function
   const inspectAllServicesAndCharacteristics = useCallback(async () => {
     if (!BLEService.device || typeof BLEService.device.services !== "function") {
-      setError("No device connected or device object is not as expected for inspection.")
+      showStatus({
+        text: "No device connected or device object is not as expected for inspection.",
+        type: StatusType.error,
+      })
       return
     }
     setIsProcessing(true)
-    setError(null)
+    setStatus(null)
     setDiscoveredServicesData([])
     console.log("Starting full service and characteristic inspection...")
 
@@ -421,13 +481,16 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       setDiscoveredServicesData(servicesInformation)
       sheetRef.current?.snapToIndex(1)
       if (servicesInformation.length === 0) {
-        setError("No services found on this device after inspection.")
+        showStatus({
+          text: "No services found on this device after inspection.",
+          type: StatusType.error,
+        })
       } else {
         console.log("Fetched all services data:", servicesInformation)
       }
     } catch (e: any) {
       console.error("Error during full service inspection:", e)
-      setError(`Full Inspection Error: ${e.message}`)
+      showStatus({ text: `Full Inspection Error: ${e.message}`, type: StatusType.error })
       setDiscoveredServicesData([])
     } finally {
       setIsProcessing(false)
@@ -442,7 +505,19 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         safeAreaEdges={["top", "bottom"]}
       >
         <Text preset="heading" text="Action Monitoring" style={$heading} />
-        {error && <Text text={`Error: ${error}`} style={$errorText} />}
+        {status && (
+          <Text
+            text={status.text}
+            style={[
+              $statusText,
+              status.type === StatusType.error
+                ? $statusError
+                : status.type === StatusType.success
+                  ? $statusSuccess
+                  : $statusInfo,
+            ]}
+          />
+        )}
         <View style={themed($heartRateContainer)}>
           <TimerProgress
             radius={80}
@@ -553,15 +628,26 @@ const $button: ViewStyle = {
 const $buttonPressed: ViewStyle = {
   backgroundColor: colors.palette.primary200 || colors.palette.neutral400,
 }
-const $errorText: TextStyle = {
-  color: colors.error,
+const $statusText: TextStyle = {
   textAlign: "center",
   marginBottom: spacing.md,
   fontSize: 14,
   fontFamily: typography.primary.medium,
   padding: spacing.sm,
-  backgroundColor: colors.palette.angry100,
   borderRadius: spacing.xs,
+}
+
+const $statusError: TextStyle = {
+  color: colors.palette.error500,
+  backgroundColor: colors.palette.error100,
+}
+const $statusSuccess: TextStyle = {
+  color: colors.palette.success500,
+  backgroundColor: colors.palette.success100,
+}
+const $statusInfo: TextStyle = {
+  color: colors.palette.info500,
+  backgroundColor: colors.palette.info100,
 }
 
 const $switchContainer: ViewStyle = {
