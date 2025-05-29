@@ -26,6 +26,8 @@ export const WelcomeScreen: FC<WelcomeScreenProps> = observer(function WelcomeSc
   }, [navigate])
 
   useEffect(() => {
+    //STEP = 01
+    //Request android to give permission for Bluetooth
     BLEService.requestBluetoothPermission()
   }, [])
 

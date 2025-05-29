@@ -32,20 +32,13 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
       theme: { colors },
     } = useAppTheme()
 
-    const isFoundDeviceUpdateNecessary = (
-      currentDevices: DeviceExtendedByUpdateTime[],
-      updatedDevice: Device,
-    ) => {
-      const currentDevice = currentDevices.find(({ id }) => updatedDevice.id === id)
-      if (!currentDevice) {
-        return true
-      }
-      return currentDevice.updateTimestamp < Date.now()
-    }
-
+    // STEP = 02
+    // Starts scanning for BLE devices and updates the UI state
     const startScaning = () => {
-      setFoundDevices([])
+      setFoundDevices([]) // set device array to empty
       setStatus("Scanning Near Device")
+
+      // intializeBLE and Start the Scan device
       BLEService.initializeBLE().then(() => {
         BLEService.scanDevices(addFoundDevice, null, true)
         setTimeout(() => {
@@ -54,20 +47,8 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
       })
     }
 
-    const showAlertToConnect = useCallback(
-      (device: Device) => {
-        Alert.alert("Connect To Device", `Are you want to Connect ${device.name}`, [
-          {
-            text: "Cancel",
-            onPress: () => console.log("Cancel Pressed"),
-            style: "cancel",
-          },
-          { text: "Connect", onPress: () => ConnectToDevice(device) },
-        ])
-      },
-      [BLEService.device],
-    )
-
+    //STEP = 03
+    // Adds a found device to the list if it meets the criteria
     const addFoundDevice = (device: Device) =>
       setFoundDevices((prevState) => {
         if (typeof device.rssi !== "number" || device.rssi <= -60) {
@@ -93,22 +74,59 @@ export const DeviceSearchScreen: FC<DeviceSearchScreenProps> = observer(
         return nextState
       })
 
+    //STEP = 04
+    // Stops scanning for BLE devices
     const stopScaning = () => {
       BLEService.manager.stopDeviceScan()
     }
 
-    const onConnectSuccess = () => {
-      navigate.navigate("Heartrate")
-    }
+    //STEP = 05
+    // Shows an alert dialog to confirm connection to a device
+    const showAlertToConnect = useCallback(
+      (device: Device) => {
+        Alert.alert("Connect To Device", `Are you want to Connect ${device.name}`, [
+          {
+            text: "Cancel",
+            onPress: () => console.log("Cancel Pressed"),
+            style: "cancel",
+          },
+          { text: "Connect", onPress: () => ConnectToDevice(device) },
+        ])
+      },
+      [BLEService.device],
+    )
 
-    const onConnectFail = () => {
-      setStatus("Not able to connect")
-    }
-
+    //STEP = 06
+    // Initiates connection to a selected device
     const ConnectToDevice = useCallback((device: Device) => {
       setStatus(`Connecting to ${device.name}`)
       BLEService.connectToDevice(device.id).then(onConnectSuccess).catch(onConnectFail)
     }, [])
+
+    //STEP = 07
+    // Handles successful connection to a device
+    const onConnectSuccess = () => {
+      navigate.navigate("Heartrate")
+    }
+
+    // <<-- Utils Fuctions -->>
+
+    // Handles failed connection to a device
+    const onConnectFail = () => {
+      setStatus("Not able to connect")
+    }
+
+    // Checks if the found device should be updated in the device list
+    const isFoundDeviceUpdateNecessary = (
+      currentDevices: DeviceExtendedByUpdateTime[],
+      updatedDevice: Device,
+    ) => {
+      const currentDevice = currentDevices.find(({ id }) => updatedDevice.id === id)
+      if (!currentDevice) {
+        return true
+      }
+      return currentDevice.updateTimestamp < Date.now()
+    }
 
     return (
       <Screen

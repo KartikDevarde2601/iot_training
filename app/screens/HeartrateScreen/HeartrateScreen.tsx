@@ -11,6 +11,7 @@ import { useAppTheme } from "@/utils/useAppTheme"
 import { ServiceInfo, CharacteristicInfo, DescriptorInfo, DescriptorBox } from "./DescriptorBox"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
+
 const HEART_RATE_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
 const HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
 
@@ -37,6 +38,8 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
   const { themed, theme } = useAppTheme()
 
   useEffect(() => {
+    //STEP = 08
+    // discovering Service and characterstics
     const discoverDeviceServices = async () => {
       if (BLEService.device) {
         setError(null)
@@ -62,11 +65,82 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
       discoverDeviceServices()
     }
 
+    //STEP = 12
     // Cleanup function
     return () => {
       BLEService.finishMonitor()
     }
   }, [BLEService.device])
+
+  // STEP 09
+  // monitoring get value continously
+  const toggleMonitoring = async () => {
+    if (!BLEService.device) {
+      setError(
+        BLEService.device ? "Device does not support monitoring." : "No BLE device connected.",
+      )
+      setMonitoring(false)
+      return
+    }
+    setIsProcessing(true)
+    setError(null)
+    if (monitoring) {
+      BLEService.finishMonitor()
+      setMonitoring(false)
+      stopAnimation()
+      setHeartRate(null)
+    } else {
+      try {
+        BLEService.setupMonitor(
+          HEART_RATE_SERVICE_UUID,
+          HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID,
+          (characteristic) => {
+            if (characteristic && characteristic.value) handleHeartRateData(characteristic.value)
+          },
+          (error) => {
+            setError(`Failed to start: ${error.message}`)
+          },
+        )
+        startAnimation()
+        setMonitoring(true)
+      } catch (e: any) {
+        setError(`Failed to start: ${e.message}`)
+        setMonitoring(false)
+      }
+    }
+    setIsProcessing(false)
+  }
+
+  //STEP = 10
+  //function handle incoming data from device it convert base64 into bytes then convert actual value
+  const handleHeartRateData = (base64Value: string) => {
+    try {
+      const rawData = atob(base64Value)
+      const byteArray = new Uint8Array(rawData.length)
+      for (let i = 0; i < rawData.length; i++) {
+        byteArray[i] = rawData.charCodeAt(i) & 0xff
+      }
+      if (byteArray.length === 0) return
+      const flags = byteArray[0]
+      const isUINT16 = (flags & 0x01) !== 0
+      let hrValue: number
+      if (isUINT16) {
+        if (byteArray.length < 3) return
+        const buffer = byteArray.buffer.slice(byteArray.byteOffset + 1, byteArray.byteOffset + 3)
+        const view = new DataView(buffer)
+        hrValue = view.getUint16(0, true)
+      } else {
+        if (byteArray.length < 2) return
+        hrValue = byteArray[1]
+      }
+      // STEP = 11
+      // set value in UI
+      setHeartRate(hrValue)
+    } catch (e) {
+      console.error("Failed to parse heart rate data:", e)
+      setError("Error parsing heart rate data.")
+    }
+  }
 
   const startAnimation = () => {
     if (!isAnimating) {
@@ -89,50 +163,8 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     }
   }
 
-  const stopAnimation = () => {
-    if (loopRef.current) {
-      loopRef.current.stop() // Stops the animation
-      loopRef.current = null
-      setIsAnimating(false)
-    }
-  }
-
-  const handleHeartRateData = (base64Value: string) => {
-    try {
-      const rawData = atob(base64Value)
-      const byteArray = new Uint8Array(rawData.length)
-      for (let i = 0; i < rawData.length; i++) {
-        byteArray[i] = rawData.charCodeAt(i) & 0xff
-      }
-      if (byteArray.length === 0) return
-      const flags = byteArray[0]
-      const isUINT16 = (flags & 0x01) !== 0
-      let hrValue: number
-      if (isUINT16) {
-        if (byteArray.length < 3) return
-        const buffer = byteArray.buffer.slice(byteArray.byteOffset + 1, byteArray.byteOffset + 3)
-        const view = new DataView(buffer)
-        hrValue = view.getUint16(0, true)
-      } else {
-        if (byteArray.length < 2) return
-        hrValue = byteArray[1]
-      }
-      setHeartRate(hrValue)
-    } catch (e) {
-      console.error("Failed to parse heart rate data:", e)
-      setError("Error parsing heart rate data.")
-    }
-  }
-
-  const isGenericService = (uuid: string) => {
-    const lower = uuid.toLowerCase()
-    return (
-      lower === "00001800-0000-1000-8000-00805f9b34fb" ||
-      lower === "00001801-0000-1000-8000-00805f9b34fb"
-    )
-  }
-
-  // Renamed and updated function
+  // Optional
+  // Get All service and attach Characterstic
   const inspectAllServicesAndCharacteristics = async () => {
     if (!BLEService.device || typeof BLEService.device.services !== "function") {
       setError("No device connected or device object is not as expected for inspection.")
@@ -213,41 +245,20 @@ export const HeartrateScreen: FC<HeartrateScreenProps> = observer(function Heart
     }
   }
 
-  const toggleMonitoring = async () => {
-    if (!BLEService.device) {
-      setError(
-        BLEService.device ? "Device does not support monitoring." : "No BLE device connected.",
-      )
-      setMonitoring(false)
-      return
+  const stopAnimation = () => {
+    if (loopRef.current) {
+      loopRef.current.stop() // Stops the animation
+      loopRef.current = null
+      setIsAnimating(false)
     }
-    setIsProcessing(true)
-    setError(null)
-    if (monitoring) {
-      BLEService.finishMonitor()
-      setMonitoring(false)
-      stopAnimation()
-      setHeartRate(null)
-    } else {
-      try {
-        BLEService.setupMonitor(
-          HEART_RATE_SERVICE_UUID,
-          HEART_RATE_MEASUREMENT_CHARACTERISTIC_UUID,
-          (characteristic) => {
-            if (characteristic && characteristic.value) handleHeartRateData(characteristic.value)
-          },
-          (error) => {
-            setError(`Failed to start: ${error.message}`)
-          },
-        )
-        startAnimation()
-        setMonitoring(true)
-      } catch (e: any) {
-        setError(`Failed to start: ${e.message}`)
-        setMonitoring(false)
-      }
-    }
-    setIsProcessing(false)
+  }
+
+  const isGenericService = (uuid: string) => {
+    const lower = uuid.toLowerCase()
+    return (
+      lower === "00001800-0000-1000-8000-00805f9b34fb" ||
+      lower === "00001801-0000-1000-8000-00805f9b34fb"
+    )
   }
 
   return (
