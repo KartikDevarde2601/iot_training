@@ -36,12 +36,10 @@ export class DatabaseService {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER,
     timestamp INTEGER,
-    accel_x REAL,
-    accel_y REAL,
-    accel_z REAL,
-    gyro_x REAL,
-    gyro_y REAL,
-    gyro_z REAL,
+    accel_magnitude_ms2 REAL,
+    gyro_magnitude_dps REAL,
+    pitch_deg REAL,
+    roll_deg REAL,
     FOREIGN KEY(session_id) REFERENCES ${TABLE.session}(session_id) ON DELETE CASCADE
   );
 
@@ -50,7 +48,9 @@ export class DatabaseService {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER,
     timestamp INTEGER,
-    value REAL,
+    latest_emg_envelope REAL,
+    latest_emg_mav REAL,
+    latest_emg_rms REAL,
     FOREIGN KEY(session_id) REFERENCES ${TABLE.session}(session_id) ON DELETE CASCADE
   );
 

@@ -4,18 +4,18 @@ import { TABLE } from "./db_table"
 
 interface IMUData {
   timestamp: number
-  accel_x: number
-  accel_y: number
-  accel_z: number
-  gyro_x: number
-  gyro_y: number
-  gyro_z: number
+  accel_magnitude_ms2: number
+  gyro_magnitude_dps: number
+  pitch_deg: number
+  roll_deg: number
   session_id: number
 }
 
 interface EXG {
   timestamp: number
-  value: number
+  latest_emg_envelope: number
+  latest_emg_mav: number
+  latest_emg_rms: number
   session_id: number
 }
 
@@ -46,8 +46,8 @@ export class sensorRepository {
 
   async insertIMU(data: IMUData, tablename: string): Promise<QueryResult> {
     const query = `INSERT INTO ${tablename} 
-      (session_id,timestamp, accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z) 
-      VALUES (?, ?, ?, ?, ?, ?, ?,?)`
+      (session_id,timestamp, accel_magnitude_ms2, gyro_magnitude_dps, pitch_deg, roll_deg) 
+      VALUES (?, ?, ?, ?, ?, ?)`
 
     try {
       if (!this.db) {
@@ -57,12 +57,10 @@ export class sensorRepository {
       const result = await this.db.executeQuery(query, [
         data.session_id,
         data.timestamp,
-        data.accel_x,
-        data.accel_y,
-        data.accel_z,
-        data.gyro_x,
-        data.gyro_y,
-        data.gyro_z,
+        data.accel_magnitude_ms2,
+        data.gyro_magnitude_dps,
+        data.pitch_deg,
+        data.roll_deg,
       ])
 
       return result
@@ -73,7 +71,7 @@ export class sensorRepository {
   }
 
   async insertEXG(data: EXG, tablename: string): Promise<QueryResult> {
-    const query = `INSERT INTO ${tablename} (session_id,timestamp, value) VALUES (?, ?,?)`
+    const query = `INSERT INTO ${tablename} (session_id,timestamp, latest_emg_envelope,latest_emg_mav,latest_emg_rms) VALUES (?, ?,?,?,?)`
 
     try {
       if (!this.db) {
@@ -83,7 +81,9 @@ export class sensorRepository {
       const result = await this.db.executeQuery(query, [
         data.session_id,
         data.timestamp,
-        data.value,
+        data.latest_emg_envelope,
+        data.latest_emg_mav,
+        data.latest_emg_rms,
       ])
       return result
     } catch (error) {

@@ -30,13 +30,13 @@ interface Status {
 
 interface CSVRow {
   timestamp: number
-  accel_x: number
-  accel_y: number
-  accel_z: number
-  gyro_x: number
-  gyro_y: number
-  gyro_z: number
-  exg_value: number
+  accel_magnitude_ms2: number
+  gyro_magnitude_dps: number
+  pitch_deg: number
+  roll_deg: number
+  latest_emg_envelope: number
+  latest_emg_mav: number
+  latest_emg_rms: number
 }
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -57,7 +57,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   const currentSession = useRef<number | null>(null)
 
   // Timer related state and values
-  const [totalSeconds, setTotalSeconds] = useState<number>(10)
+  const [totalSeconds, setTotalSeconds] = useState<number>(5)
   const percentage = useSharedValue(0)
   const endAngleProgress = useSharedValue(1)
   const isRunning = useSharedValue(false)
@@ -154,14 +154,13 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     if (currentSession.current != null) {
       const imuData = {
         timestamp: dataView.getUint32(0, true),
-        accel_x: dataView.getFloat32(4, true),
-        accel_y: dataView.getFloat32(8, true),
-        accel_z: dataView.getFloat32(12, true),
-        gyro_x: dataView.getFloat32(16, true),
-        gyro_y: dataView.getFloat32(20, true),
-        gyro_z: dataView.getFloat32(24, true),
+        accel_magnitude_ms2: dataView.getFloat32(4, true),
+        gyro_magnitude_dps: dataView.getFloat32(8, true),
+        pitch_deg: dataView.getFloat32(12, true),
+        roll_deg: dataView.getFloat32(16, true),
         session_id: currentSession.current,
       }
+
       sensorService.insertIMU(imuData, TABLE.imu_data)
     }
   }
@@ -177,8 +176,11 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       const exgdata = {
         session_id: currentSession.current,
         timestamp: dataView.getUint32(0, true),
-        value: dataView.getFloat32(4, true),
+        latest_emg_envelope: dataView.getFloat32(4, true),
+        latest_emg_mav: dataView.getFloat32(8, true),
+        latest_emg_rms: dataView.getFloat32(12, true),
       }
+
       sensorService.insertEXG(exgdata, TABLE.exg_data)
     }
   }
@@ -187,25 +189,24 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     try {
       const headers = [
         "timestamp",
-        "accel_x",
-        "accel_y",
-        "accel_z",
-        "gyro_x",
-        "gyro_y",
-        "gyro_z",
-        "exg_value",
+        "accel_magnitude_ms2",
+        "gyro_magnitude_dps",
+        "pitch_deg",
+        "latest_emg_envelope",
+        "latest_emg_mav",
+        "latest_emg_rms",
       ].join(",")
 
       const csvRows = data.map((row) => {
         return [
           row.timestamp,
-          row.accel_x,
-          row.accel_y,
-          row.accel_z,
-          row.gyro_x,
-          row.gyro_y,
-          row.gyro_z,
-          row.exg_value,
+          row.accel_magnitude_ms2,
+          row.gyro_magnitude_dps,
+          row.pitch_deg,
+          row.roll_deg,
+          row.latest_emg_envelope,
+          row.latest_emg_mav,
+          row.latest_emg_rms,
         ].join(",")
       })
 
@@ -260,13 +261,13 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         const query = `
       SELECT 
         i.timestamp,
-        i.accel_x,
-        i.accel_y,
-        i.accel_z,
-        i.gyro_x,
-        i.gyro_y,
-        i.gyro_z,
-        e.value as exg_value
+        i.accel_magnitude_ms2,
+        i.gyro_magnitude_dps,
+        i.pitch_deg,
+        i.roll_deg,
+        e.latest_emg_envelope,
+        e.latest_emg_mav,
+        e.latest_emg_rms
       FROM ${TABLE.imu_data} i
       LEFT JOIN ${TABLE.exg_data} e 
         ON i.session_id = e.session_id 
@@ -276,18 +277,17 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
       LIMIT 1000;`
 
         const result = await dbService.executeQuery(query, [currentSession.current])
-
         const combinedData = result.rows.length > 0 ? result.rows : []
 
         const csvRows: CSVRow[] = combinedData.map((row: any) => ({
           timestamp: Number(row.timestamp),
-          accel_x: Number(row.accel_x),
-          accel_y: Number(row.accel_y),
-          accel_z: Number(row.accel_z),
-          gyro_x: Number(row.gyro_x),
-          gyro_y: Number(row.gyro_y),
-          gyro_z: Number(row.gyro_z),
-          exg_value: Number(row.exg_value),
+          accel_magnitude_ms2: Number(row.accel_magnitude_ms2),
+          gyro_magnitude_dps: Number(row.gyro_magnitude_dps),
+          pitch_deg: Number(row.pitch_deg),
+          roll_deg: Number(row.roll_deg),
+          latest_emg_envelope: Number(row.latest_emg_envelope),
+          latest_emg_mav: Number(row.latest_emg_mav),
+          latest_emg_rms: Number(row.latest_emg_envelope),
         }))
 
         if (csvRows.length > 0) {
@@ -383,11 +383,10 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         const binaryStr = atob(characteristic.value)
         const configValue = binaryStr.charCodeAt(0)
         if (configValue) {
-          const buffer = new ArrayBuffer(8)
+          const buffer = new ArrayBuffer(4)
           const view = new DataView(buffer)
 
-          view.setUint32(0, 25, true)
-          view.setUint32(4, 10, true)
+          view.setUint32(0, 3000, true)
 
           // Convert to base64 for BLE transmission
           const bytes = new Uint8Array(buffer)
