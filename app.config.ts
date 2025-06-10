@@ -12,7 +12,7 @@ require("ts-node/register")
  * You can read more about Expo's Configuration Resolution Rules here:
  * https://docs.expo.dev/workflow/configuration/#configuration-resolution-rules
  */
-module.exports = ({ config }: ConfigContext): Partial<ExpoConfig> => {
+export default ({ config }: ConfigContext): Partial<ExpoConfig> => {
   const existingPlugins = config.plugins ?? []
 
   return {

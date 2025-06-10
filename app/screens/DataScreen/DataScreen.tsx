@@ -7,15 +7,13 @@ import { spacing, colors, typography } from "app/theme"
 import { BLEService } from "@/services/ble/BLEservice"
 import { atob } from "react-native-quick-base64"
 import { useAppTheme } from "@/utils/useAppTheme"
+import { ThemedStyle } from "app/theme"
 import { ServiceInfo, CharacteristicInfo, DescriptorInfo, DescriptorBox } from "./DescriptorBox"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
-import { TimerProgress } from "./timerProgress"
+import { RealTimeGraph } from "@/components/realtimeGraph"
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
-import { sensorRepository } from "../../op-sql/sensorRepository"
-import { DatabaseService } from "../../op-sql/databaseRepository"
 import * as FileSystem from "expo-file-system"
 import Animated, { useSharedValue, withTiming, runOnUI } from "react-native-reanimated"
-import { TABLE } from "@/op-sql/db_table"
 
 enum StatusType {
   error,
@@ -28,23 +26,22 @@ interface Status {
   type: StatusType
 }
 
-interface CSVRow {
-  timestamp: number
-  accel_magnitude_ms2: number
-  gyro_magnitude_dps: number
-  pitch_deg: number
-  roll_deg: number
-  latest_emg_envelope: number
-  latest_emg_mav: number
-  latest_emg_rms: number
+interface IMU {
+  accel_x: number
+  accel_y: number
+  accel_z: number
+  gyro_x: number
+  gyro_y: number
+  gyro_z: number
+}
+
+interface EMG {
+  envelope_value: number
 }
 
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-const CHARACTERISTIC_CFG = "d0a1d466-344c-4be3-ab3f-189f80dd7516"
-const CHARACTERISTIC_CTRL = "e1b2c3d4-e5f6-4765-8734-567890123abc"
-const CHARACTERISTIC_IMU = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-const CHARACTERISTIC_EXG = "cba1d466-344c-4be3-ab3f-189f80dd7516"
-const CHARACTERISTIC_COMPLETED = "1ca3b55b-9700-44fa-afaf-8fd271de74ab"
+const CHARACTERISTIC_IMU = "beb5483e-36e1-4688-b7f5-ea07361b26b4"
+const CHARACTERISTIC_EXG = "beb5483e-36e1-4688-b7f5-ea07361b26b3"
 
 interface HeartrateScreenProps extends AppStackScreenProps<"Data"> {}
 
@@ -52,7 +49,15 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   const [monitoring, setMonitoring] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
-  const [direction, setDirection] = useState<"up" | "down">("up")
+  const [imudata, setimudata] = useState<IMU>({
+    accel_x: 0.0,
+    accel_y: 0.0,
+    accel_z: 0.0,
+    gyro_x: 0.0,
+    gyro_y: 0.0,
+    gyro_z: 0.0,
+  })
+  const [emgdata, setemgdata] = useState<EMG>({ envelope_value: 0 })
 
   const currentSession = useRef<number | null>(null)
 
@@ -62,11 +67,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
   const endAngleProgress = useSharedValue(1)
   const isRunning = useSharedValue(false)
   const timeLeft = useSharedValue(totalSeconds)
-  const permissionDirectoryUrl = useRef<string | null>(null)
-
-  const dbService = useMemo(() => DatabaseService.getInstance(), [])
-
-  const sensorService = useMemo(() => new sensorRepository(), [])
 
   // Calculate total timer duration in milliseconds
   const totalTimeMs = totalSeconds * 1000
@@ -86,8 +86,6 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         setIsProcessing(true)
         try {
           await BLEService.device.discoverAllServicesAndCharacteristics()
-          await Monitoring()
-          console.log("Services and characteristics discovered successfully.")
         } catch (e: any) {
           console.error("Service discovery error:", e)
           showStatus({
@@ -126,286 +124,89 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
     setStatus(status)
   }
 
-  const startTimer = useCallback(() => {
-    if (isRunning.value) return
-    runOnUI(() => {
-      "worklet"
-      isRunning.value = true
-      percentage.value = 100
-      endAngleProgress.value = 1
-      timeLeft.value = totalSeconds
-
-      percentage.value = withTiming(0, { duration: totalTimeMs })
-
-      endAngleProgress.value = withTiming(0, { duration: totalTimeMs })
-    })()
-  }, [isRunning, percentage, endAngleProgress, timeLeft, totalSeconds, totalTimeMs])
-
-  const handleTimerComplete = useCallback(() => {
-    console.log("timer completed ")
-  }, [])
-
   const handleIMU = (base64Value: string) => {
     const rawdata = atob(base64Value)
-    const dataView = new DataView(
-      new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0))).buffer,
-    )
+    const bytes = new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0)))
+    const dataView = new DataView(bytes.buffer)
 
-    if (currentSession.current != null) {
-      const imuData = {
-        timestamp: dataView.getUint32(0, true),
-        accel_magnitude_ms2: dataView.getFloat32(4, true),
-        gyro_magnitude_dps: dataView.getFloat32(8, true),
-        pitch_deg: dataView.getFloat32(12, true),
-        roll_deg: dataView.getFloat32(16, true),
-        session_id: currentSession.current,
-      }
-
-      sensorService.insertIMU(imuData, TABLE.imu_data)
+    const imu = {
+      accel_x: dataView.getFloat32(0, true),
+      accel_y: dataView.getFloat32(4, true),
+      accel_z: dataView.getFloat32(8, true),
+      gyro_x: dataView.getFloat32(12, true),
+      gyro_y: dataView.getFloat32(16, true),
+      gyro_z: dataView.getFloat32(20, true),
     }
+    setimudata(imu)
   }
 
   const handleEXG = (base64Value: string) => {
     const rawdata = atob(base64Value)
+    const bytes = new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0)))
+    const dataView = new DataView(bytes.buffer)
 
-    const dataView = new DataView(
-      new Uint8Array(rawdata.split("").map((c) => c.charCodeAt(0))).buffer,
-    )
-
-    if (currentSession.current != null) {
-      const exgdata = {
-        session_id: currentSession.current,
-        timestamp: dataView.getUint32(0, true),
-        latest_emg_envelope: dataView.getFloat32(4, true),
-        latest_emg_mav: dataView.getFloat32(8, true),
-        latest_emg_rms: dataView.getFloat32(12, true),
-      }
-
-      sensorService.insertEXG(exgdata, TABLE.exg_data)
-    }
+    const envelope_value = dataView.getInt16(0, true)
+    setemgdata({ envelope_value })
   }
 
-  const generateCSV = async (data: CSVRow[]) => {
-    try {
-      const headers = [
-        "timestamp",
-        "accel_magnitude_ms2",
-        "gyro_magnitude_dps",
-        "pitch_deg",
-        "latest_emg_envelope",
-        "latest_emg_mav",
-        "latest_emg_rms",
-      ].join(",")
-
-      const csvRows = data.map((row) => {
-        return [
-          row.timestamp,
-          row.accel_magnitude_ms2,
-          row.gyro_magnitude_dps,
-          row.pitch_deg,
-          row.roll_deg,
-          row.latest_emg_envelope,
-          row.latest_emg_mav,
-          row.latest_emg_rms,
-        ].join(",")
-      })
-
-      const csvString = [headers, ...csvRows].join("\n")
-      const fileName = `${direction}_${currentSession.current}.csv`
-
-      // Request permission if we don't have it yet
-      if (permissionDirectoryUrl.current == null) {
-        const permissionResult =
-          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync()
-        if (!permissionResult.granted) {
-          showStatus({
-            text: "Permission to access external storage was denied",
-            type: StatusType.error,
-          })
-          return
-        }
-        permissionDirectoryUrl.current = permissionResult.directoryUri
-      }
-
-      // Create the file in the SAF directory
-      const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        permissionDirectoryUrl.current!,
-        fileName,
-        "text/csv",
-      )
-
-      // Write the CSV string to the file
-      await FileSystem.writeAsStringAsync(fileUri, csvString, {
-        encoding: FileSystem.EncodingType.UTF8,
-      })
-      showStatus({
-        text: "CSV file saved to external storage successfully",
-        type: StatusType.success,
-      })
-    } catch (error) {
-      console.error("Error generating CSV:", error)
-      showStatus({
-        text: `Error generating CSV: ${error}`,
-        type: StatusType.error,
-      })
-    }
-  }
-
-  const handleCompleted = async (base64Value: string) => {
-    const rawdata = atob(base64Value)
-    const configValue = rawdata.charCodeAt(0)
-    if (configValue) {
-      showStatus({ text: "wait csv file is generating", type: StatusType.info })
-      try {
-        // Join IMU and EXG data based on timestamp
-        const query = `
-      SELECT 
-        i.timestamp,
-        i.accel_magnitude_ms2,
-        i.gyro_magnitude_dps,
-        i.pitch_deg,
-        i.roll_deg,
-        e.latest_emg_envelope,
-        e.latest_emg_mav,
-        e.latest_emg_rms
-      FROM ${TABLE.imu_data} i
-      LEFT JOIN ${TABLE.exg_data} e 
-        ON i.session_id = e.session_id 
-        AND i.timestamp = e.timestamp
-      WHERE i.session_id = ?
-      ORDER BY i.timestamp
-      LIMIT 1000;`
-
-        const result = await dbService.executeQuery(query, [currentSession.current])
-        const combinedData = result.rows.length > 0 ? result.rows : []
-
-        const csvRows: CSVRow[] = combinedData.map((row: any) => ({
-          timestamp: Number(row.timestamp),
-          accel_magnitude_ms2: Number(row.accel_magnitude_ms2),
-          gyro_magnitude_dps: Number(row.gyro_magnitude_dps),
-          pitch_deg: Number(row.pitch_deg),
-          roll_deg: Number(row.roll_deg),
-          latest_emg_envelope: Number(row.latest_emg_envelope),
-          latest_emg_mav: Number(row.latest_emg_mav),
-          latest_emg_rms: Number(row.latest_emg_envelope),
-        }))
-
-        if (csvRows.length > 0) {
-          await generateCSV(csvRows)
-        } else {
-          showStatus({ text: "No data available to generate CSV", type: StatusType.info })
-        }
-      } catch (error) {
-        showStatus({ text: `Error generating CSV: ${error}`, type: StatusType.error })
-      }
-    }
-  }
-
-  const Monitoring = async () => {
+  const toggleMonitoring = async () => {
     if (!BLEService.device) {
       showStatus({
-        text: BLEService.device
-          ? "Device does not support monitoring."
-          : "No BLE device connected.",
+        text: "No BLE device connected.",
         type: StatusType.error,
       })
-
       setMonitoring(false)
       return
     }
+
     setIsProcessing(true)
     setStatus(null)
+
     if (monitoring) {
-      BLEService.finishMonitor()
-      setMonitoring(false)
-    } else {
+      // Stop monitoring
       try {
-        BLEService.setupMonitor(
-          SERVICE_UUID,
-          CHARACTERISTIC_IMU,
-          (characteristic) => {
-            if (characteristic && characteristic.value) handleIMU(characteristic.value)
-          },
-          (error) => {
-            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
-          },
-        )
-
-        BLEService.setupMonitor(
-          SERVICE_UUID,
-          CHARACTERISTIC_COMPLETED,
-          (characteristic) => {
-            if (characteristic && characteristic.value) handleCompleted(characteristic.value)
-          },
-          (error) => {
-            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
-          },
-        )
-
-        BLEService.setupMonitor(
-          SERVICE_UUID,
-          CHARACTERISTIC_EXG,
-          (characteristic) => {
-            if (characteristic && characteristic.value) handleEXG(characteristic.value)
-          },
-          (error) => {
-            showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
-          },
-        )
-
-        setMonitoring(true)
-      } catch (error: any) {
-        showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
+        await BLEService.finishMonitor()
         setMonitoring(false)
+        showStatus({ text: "Monitoring stopped.", type: StatusType.info })
+      } catch (error: any) {
+        showStatus({ text: `Failed to stop: ${error.message}`, type: StatusType.error })
+      } finally {
+        setIsProcessing(false)
       }
+      return
     }
-    setIsProcessing(false)
-  }
 
-  const startAction = async () => {
+    // Start monitoring
     try {
-      const dateunix = Math.floor(new Date().getTime() / 1000)
-      const session = await sensorService.insertSession(
-        { timestamp: dateunix, action: direction },
-        TABLE.session,
-      )
-      if (session.insertId) {
-        currentSession.current = session.insertId
-      } else {
-        showStatus({ text: "error occour when sending to BLE Device", type: StatusType.error })
-      }
-
-      const characteristic = await BLEService.readCharacteristicForDevice(
+      BLEService.setupMonitor(
         SERVICE_UUID,
-        CHARACTERISTIC_CFG,
+        CHARACTERISTIC_IMU,
+        (characteristic) => {
+          if (characteristic && characteristic.value) handleIMU(characteristic.value)
+        },
+        (error) => {
+          showStatus({ text: `Failed to start IMU: ${error.message}`, type: StatusType.error })
+        },
       )
-      if (characteristic?.value) {
-        const binaryStr = atob(characteristic.value)
-        const configValue = binaryStr.charCodeAt(0)
-        if (configValue) {
-          const buffer = new ArrayBuffer(4)
-          const view = new DataView(buffer)
 
-          view.setUint32(0, 3000, true)
+      BLEService.setupMonitor(
+        SERVICE_UUID,
+        CHARACTERISTIC_EXG,
+        (characteristic) => {
+          if (characteristic && characteristic.value) handleEXG(characteristic.value)
+        },
+        (error) => {
+          showStatus({ text: `Failed to start EXG: ${error.message}`, type: StatusType.error })
+        },
+      )
 
-          // Convert to base64 for BLE transmission
-          const bytes = new Uint8Array(buffer)
-          let binary = ""
-          bytes.forEach((byte) => (binary += String.fromCharCode(byte)))
-          const base64 = btoa(binary)
-
-          // Write to BLE device
-          await BLEService.writeCharacteristicWithResponseForDevice(
-            SERVICE_UUID,
-            CHARACTERISTIC_CTRL,
-            base64,
-          ).then(() => {
-            startTimer()
-          })
-        }
-      }
-    } catch (error) {
-      throw error
+      setMonitoring(true)
+      showStatus({ text: "Monitoring started.", type: StatusType.success })
+    } catch (error: any) {
+      showStatus({ text: `Failed to start: ${error.message}`, type: StatusType.error })
+      setMonitoring(false)
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -503,7 +304,7 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
         contentContainerStyle={themed($container)}
         safeAreaEdges={["top", "bottom"]}
       >
-        <Text preset="heading" text="Action Monitoring" style={$heading} />
+        <Text preset="heading" text="IMU & EMG" style={$heading} />
         {status && (
           <Text
             text={status.text}
@@ -517,52 +318,114 @@ export const DataScreen: FC<HeartrateScreenProps> = observer(function HeartrateS
             ]}
           />
         )}
-        <View style={themed($heartRateContainer)}>
-          <TimerProgress
-            radius={80}
-            progressColor="#FFBB50"
-            percentage={percentage}
-            endAngleProgress={endAngleProgress}
-            isRunning={isRunning}
-            timeLeft={timeLeft}
-            totalSeconds={totalSeconds}
-            onComplete={handleTimerComplete}
+        <View
+          style={{
+            marginVertical: spacing.md,
+            padding: spacing.md,
+            borderRadius: spacing.xs,
+            backgroundColor: colors.palette.neutral100,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
+        >
+          <Text
+            preset="subheading"
+            text="IMU Data"
+            style={{
+              marginBottom: spacing.xs,
+              color: colors.palette.primary500,
+              fontFamily: typography.primary.bold,
+              fontSize: 16,
+              textAlign: "center",
+            }}
+          />
+          <View style={{ marginTop: spacing.sm }}>
+            {/* Header Row */}
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}
+            >
+              <Text text="" style={{ flex: 1 }} />
+              <Text
+                text="Accel (m/s²)"
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+              <Text
+                text="Gyro (°/s)"
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+            </View>
+            {/* X Axis */}
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}
+            >
+              <Text text="X axis:" style={{ flex: 1, color: colors.text }} />
+              <Text
+                text={imudata.accel_x.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+              <Text
+                text={imudata.gyro_x.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+            </View>
+            {/* Y Axis */}
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}
+            >
+              <Text text="Y axis:" style={{ flex: 1, color: colors.text }} />
+              <Text
+                text={imudata.accel_y.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+              <Text
+                text={imudata.gyro_y.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+            </View>
+            {/* Z Axis */}
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}
+            >
+              <Text text="Z axis:" style={{ flex: 1, color: colors.text }} />
+              <Text
+                text={imudata.accel_z.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+              <Text
+                text={imudata.gyro_z.toFixed(2)}
+                style={{ flex: 1, color: colors.text, textAlign: "center" }}
+              />
+            </View>
+          </View>
+        </View>
+        <View style={themed($graphWrapper)}>
+          <RealTimeGraph
+            value={emgdata.envelope_value}
+            title="EMG envelope Graph"
+            graphColor={colors.palette.accent500}
           />
         </View>
-        <View>
-          <View style={$switchContainer}>
-            <Text style={$switchLabel} preset="subheading">
-              Action: up
-            </Text>
-            <Switch
-              value={direction === "up"}
-              onValueChange={(value) => setDirection(value ? "up" : "down")}
-            />
-          </View>
-          <View style={$switchContainer}>
-            <Text style={$switchLabel} preset="subheading">
-              Action: down
-            </Text>
-            <Switch
-              value={direction === "down"}
-              onValueChange={(value) => setDirection(value ? "up" : "down")}
-            />
-          </View>
+
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Button
+            text={monitoring ? "stop monitoring" : "start monitoring"}
+            onPress={() => toggleMonitoring()}
+            disabled={isProcessing || !BLEService.device}
+            style={$button}
+            pressedStyle={$buttonPressed}
+          />
+          <Button
+            text="Inspect"
+            onPress={inspectAllServicesAndCharacteristics}
+            disabled={isProcessing || !BLEService.device}
+            style={$button}
+            pressedStyle={$buttonPressed}
+          />
         </View>
-        <Button
-          text={monitoring ? "Collecting" : "Start Action"}
-          onPress={() => startAction()}
-          disabled={isProcessing || !BLEService.device}
-          style={$button}
-          pressedStyle={$buttonPressed}
-        />
-        <Button
-          text="Inspect All Services & Chars"
-          onPress={inspectAllServicesAndCharacteristics}
-          disabled={isProcessing || !BLEService.device}
-          style={$button}
-          pressedStyle={$buttonPressed}
-        />
+
         <BottomSheet
           ref={sheetRef}
           index={-1}
@@ -612,15 +475,9 @@ const $heading: TextStyle = {
   color: colors.text,
   fontFamily: typography.primary.bold,
 }
-const $heartRateContainer: ViewStyle = {
-  justifyContent: "center",
-  alignItems: "center",
-  marginBottom: spacing.md,
-  paddingVertical: spacing.lg,
-  paddingHorizontal: spacing.md,
-}
 
 const $button: ViewStyle = {
+  width: "40%",
   marginVertical: spacing.md,
   backgroundColor: colors.tint || colors.palette.primary100,
 }
@@ -649,15 +506,6 @@ const $statusInfo: TextStyle = {
   backgroundColor: colors.palette.info100,
 }
 
-const $switchContainer: ViewStyle = {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  paddingHorizontal: spacing.md,
-  marginVertical: spacing.sm,
-}
-
-const $switchLabel: TextStyle = {
-  fontFamily: typography.primary.medium,
-  color: colors.text,
-}
+const $graphWrapper: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+})

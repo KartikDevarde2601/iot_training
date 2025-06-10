@@ -31,7 +31,6 @@ import { customFontsToLoad } from "./theme"
 import Config from "./config"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { loadDateFnsLocale } from "./utils/formatDate"
-import { DatabaseService } from "./op-sql/databaseRepository"
 
 export const NAVIGATION_PERSISTENCE_KEY = "NAVIGATION_STATE"
 
@@ -71,8 +70,6 @@ export function App() {
   const [areFontsLoaded, fontLoadError] = useFonts(customFontsToLoad)
   const [isI18nInitialized, setIsI18nInitialized] = useState(false)
 
-  const dbService = useMemo(() => DatabaseService.getInstance(), [])
-
   SplashScreen.preventAutoHideAsync()
 
   useEffect(() => {
@@ -80,22 +77,6 @@ export function App() {
       .then(() => setIsI18nInitialized(true))
       .then(() => loadDateFnsLocale())
   }, [])
-
-  useEffect(() => {
-    try {
-      dbService.initDatabase()
-    } catch (error) {
-      console.error("Failed to initialize database:", error)
-    }
-
-    return () => {
-      try {
-        dbService.close()
-      } catch (error) {
-        console.error("Failed to close database:", error)
-      }
-    }
-  }, [dbService])
 
   useEffect(() => {
     if (areFontsLoaded && isI18nInitialized) {
