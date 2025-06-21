@@ -40,7 +40,8 @@
     "apisauce": "3.0.1",
     "date-fns": "^4.1.0",
     "expo": "^52.0.44",
-    "expo-build-properties": "~0.13.1",
+    "expo-asset": "~11.0.5",
+    "expo-build-properties": "~0.13.3",
     "expo-font": "~13.0.1",
     "expo-linking": "~7.0.2",
     "expo-localization": "~16.0.0",
@@ -49,14 +50,14 @@
     "expo-system-ui": "~4.0.3",
     "i18next": "^23.14.0",
     "intl-pluralrules": "^2.0.1",
-    "lottie-react-native": "^7.2.2",
+    "lottie-react-native": "^7.1.0",
     "mobx": "6.10.2",
     "mobx-react-lite": "4.0.5",
     "mobx-state-tree": "5.3.0",
     "react": "18.3.1",
     "react-i18next": "^15.0.1",
     "react-native": "0.76.9",
-    "react-native-ble-plx": "^3.2.0",
+    "react-native-ble-plx": "^3.5.0",
     "react-native-drawer-layout": "^4.0.1",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-keyboard-controller": "^1.12.7",
@@ -99,5 +100,11 @@
   "engines": {
     "node": "^18.18.0 || >=20.0.0"
   },
-  "packageManager": "pnpm@10.8.0+sha512.0e82714d1b5b43c74610193cb20734897c1d00de89d0e18420aebc5977fa13d780a9cb05734624e81ebd81cc876cd464794850641c48b9544326b5622ca29971"
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "listUnknownPackages": false
+      }
+    }
+  }
 }

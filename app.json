@@ -1,10 +1,10 @@
 {
-  "name": "iot_training",
-  "displayName": "iot_training",
+  "name": "heartrate monitor",
+  "displayName": "heartrate monitor",
   "expo": {
-    "name": "iot_training",
-    "slug": "iot_training",
-    "scheme": "iot_training",
+    "name": "heart-rate-monitor",
+    "slug": "heart-rate-monitor",
+    "scheme": "heart-rate-monitor",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -14,9 +14,7 @@
     },
     "newArchEnabled": true,
     "jsEngine": "hermes",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "android": {
       "icon": "./assets/images/app-icon-android-legacy.png",
       "package": "com.iottraining",
@@ -26,7 +24,7 @@
       },
       "allowBackup": false,
       "splash": {
-        "backgroundColor": "#fff"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "ios": {
@@ -34,20 +32,18 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.iottraining",
       "splash": {
-        "backgroundColor": "#fff"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "web": {
       "favicon": "./assets/images/app-icon-web-favicon.png",
       "bundler": "metro",
       "splash": {
-        "backgroundColor": "#fff"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "plugins": [
-      [
-        "react-native-ble-plx"
-      ],
+      ["react-native-ble-plx"],
       "expo-localization",
       "expo-font",
       [
@@ -56,7 +52,7 @@
           "image": "./assets/images/app-icon-android-adaptive-foreground.png",
           "imageWidth": 300,
           "resizeMode": "contain",
-          "backgroundColor": "#191015"
+          "backgroundColor": "#FFFFFF"
         }
       ]
     ],
@@ -64,7 +60,12 @@
       "tsconfigPaths": true
     },
     "splash": {
-      "backgroundColor": "#fff"
+      "backgroundColor": "#FFFFFF"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a0bf690f-5eb4-4b49-8747-be1d178771c5"
+      }
     }
   },
   "ignite": {
