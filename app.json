@@ -14,7 +14,9 @@
     },
     "newArchEnabled": true,
     "jsEngine": "hermes",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
       "icon": "./assets/images/app-icon-android-legacy.png",
       "package": "com.iottraining",
@@ -22,19 +24,30 @@
         "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
         "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
       },
-      "allowBackup": false
+      "allowBackup": false,
+      "splash": {
+        "backgroundColor": "#fff"
+      }
     },
     "ios": {
       "icon": "./assets/images/app-icon-ios.png",
       "supportsTablet": true,
-      "bundleIdentifier": "com.iottraining"
+      "bundleIdentifier": "com.iottraining",
+      "splash": {
+        "backgroundColor": "#fff"
+      }
     },
     "web": {
       "favicon": "./assets/images/app-icon-web-favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "splash": {
+        "backgroundColor": "#fff"
+      }
     },
     "plugins": [
-      ["react-native-ble-plx"],
+      [
+        "react-native-ble-plx"
+      ],
       "expo-localization",
       "expo-font",
       [
@@ -49,6 +62,9 @@
     ],
     "experiments": {
       "tsconfigPaths": true
+    },
+    "splash": {
+      "backgroundColor": "#fff"
     }
   },
   "ignite": {
